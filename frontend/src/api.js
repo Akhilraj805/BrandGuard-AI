@@ -3,7 +3,7 @@
  * Connects directly to the FastAPI backend with transparent error handling.
  */
 
-const API_BASE = ''; // Relative URL leverages Vite dev proxy and unified deployment
+const API_BASE = import.meta.env.VITE_API_BASE_URL || ''; // Relative URL leverages Vite dev proxy and unified deployment
 
 async function request(url, options = {}) {
   const config = {
@@ -15,7 +15,7 @@ async function request(url, options = {}) {
   };
 
   try {
-    const res = await fetch(url, config);
+    const res = await fetch(`${API_BASE}${url}`, config);
     if (!res.ok) {
       let errorMessage = `HTTP error ${res.status}: ${res.statusText}`;
       try {
