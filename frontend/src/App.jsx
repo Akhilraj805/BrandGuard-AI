@@ -13,7 +13,7 @@ export function App() {
   const [activeGuideline, setActiveGuideline] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [selectedReviewId, setSelectedReviewId] = useState(null);
-
+  const [mobileOpen, setMobileOpen] = useState(false);
   // Poll service health
   const checkHealth = async () => {
     try {
@@ -53,7 +53,7 @@ export function App() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
+    <div className="flex min-h-screen h-[100dvh] bg-slate-50 overflow-hidden font-sans">
       {/* Persistent Left Sidebar */}
       <Sidebar
         currentTab={currentTab}
@@ -63,6 +63,8 @@ export function App() {
         }}
         activeGuideline={activeGuideline}
         isConnected={isConnected}
+        mobileOpen={mobileOpen}
+        setMobileOpen={setMobileOpen}
       />
 
       {/* Main Content Area */}
