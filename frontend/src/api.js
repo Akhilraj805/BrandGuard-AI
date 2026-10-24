@@ -3,8 +3,10 @@
  * Connects directly to the FastAPI backend with transparent error handling.
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || ''; // Relative URL leverages Vite dev proxy and unified deployment
-
+const API_BASE = (
+  import.meta.env.VITE_API_BASE_URL ||
+  'https://brandguard-ai-api.onrender.com'
+).replace(/\/+$/, '');
 async function request(url, options = {}) {
   const config = {
     headers: {
