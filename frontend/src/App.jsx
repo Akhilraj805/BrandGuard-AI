@@ -53,7 +53,7 @@ export function App() {
   };
 
   return (
-    <div className="flex min-h-screen h-[100dvh] bg-slate-50 overflow-hidden font-sans">
+    <div className="flex h-[100dvh] w-full max-w-full overflow-hidden bg-slate-50 font-sans">
       {/* Persistent Left Sidebar */}
       <Sidebar
         currentTab={currentTab}
