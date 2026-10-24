@@ -20,14 +20,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configure CORS for local development
+
+# Configure CORS for local development and Vercel deployments
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
+    allow_origin_regex=r"https://[a-zA-Z0-9-]+\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Service Health Check
 @app.get("/health")

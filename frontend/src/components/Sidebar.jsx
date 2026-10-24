@@ -54,6 +54,7 @@ export function Sidebar({
         />
       )}
 
+
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex w-[min(18rem,85vw)] shrink-0 flex-col border-r border-slate-800 bg-slate-900 text-slate-200 transition-transform duration-200 md:static md:z-auto md:w-64 md:translate-x-0 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
