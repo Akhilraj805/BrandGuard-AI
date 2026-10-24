@@ -43,7 +43,7 @@ export function Dashboard({ onNavigateToReview, onOpenReview, onNavigateToGuidel
   }, []);
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 sm:space-y-8 min-w-0">
       {/* Welcome Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-200">
         <div>
@@ -54,7 +54,7 @@ export function Dashboard({ onNavigateToReview, onOpenReview, onNavigateToGuidel
             Real-time compliance audit logs and human review oversight across marketing copy.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button
             type="button"
             onClick={loadDashboardData}
@@ -170,7 +170,7 @@ export function Dashboard({ onNavigateToReview, onOpenReview, onNavigateToGuidel
 
       {/* Recent Reviews Table */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-        <div className="p-5 border-b border-slate-200 flex items-center justify-between">
+        <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="font-semibold text-slate-900 text-base">Recent Content Reviews</h3>
             <p className="text-xs text-slate-500 mt-0.5">
