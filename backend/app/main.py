@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import CORS_ORIGINS
 from .database import init_db, get_db
-from .routes import guidelines, analyze, reviews
+from .routes import guidelines, analyze, reviews, governance, auth, workflow
 
 
 @asynccontextmanager
@@ -94,3 +94,6 @@ def get_dashboard_stats():
 app.include_router(guidelines.router)
 app.include_router(analyze.router)
 app.include_router(reviews.router)
+app.include_router(governance.router)
+app.include_router(auth.router)
+app.include_router(workflow.router)

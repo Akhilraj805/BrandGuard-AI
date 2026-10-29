@@ -2,8 +2,10 @@ import json
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Depends
 from ..database import get_db
+from ..security import current_user
+from ..governance import record_guideline_version, record_audit
 from ..models import (
     GuidelineResponse,
     GuidelineCreate,
@@ -55,7 +57,8 @@ def get_guideline(guideline_id: str):
 
 
 @router.post("", response_model=GuidelineResponse, status_code=201)
-def create_guideline(data: GuidelineCreate):
+def create_guideline(data: GuidelineCreate, user=Depends(current_user)):
+    if user["role"] != "admin": raise HTTPException(status_code=403, detail="Administrator role required")
     conn = get_db()
     cursor = conn.cursor()
 
@@ -81,6 +84,8 @@ def create_guideline(data: GuidelineCreate):
         now,
         now,
     ))
+    record_guideline_version(cursor, gid, "created")
+    record_audit(cursor, "guideline_created", "guideline", gid, {"name": data.name.strip()})
     conn.commit()
 
     cursor.execute("SELECT * FROM guidelines WHERE id = ?;", (gid,))
@@ -90,7 +95,8 @@ def create_guideline(data: GuidelineCreate):
 
 
 @router.put("/{guideline_id}", response_model=GuidelineResponse)
-def update_guideline(guideline_id: str, data: GuidelineUpdate):
+def update_guideline(guideline_id: str, data: GuidelineUpdate, user=Depends(current_user)):
+    if user["role"] != "admin": raise HTTPException(status_code=403, detail="Administrator role required")
     conn = get_db()
     cursor = conn.cursor()
 
@@ -135,6 +141,8 @@ def update_guideline(guideline_id: str, data: GuidelineUpdate):
     WHERE id = ?;
     """, (name, description, is_active, prohibited, required, tone, custom, now, guideline_id))
 
+    record_guideline_version(cursor, guideline_id, "updated")
+    record_audit(cursor, "guideline_updated", "guideline", guideline_id, {"name": name})
     conn.commit()
     cursor.execute("SELECT * FROM guidelines WHERE id = ?;", (guideline_id,))
     row = cursor.fetchone()
@@ -143,7 +151,8 @@ def update_guideline(guideline_id: str, data: GuidelineUpdate):
 
 
 @router.delete("/{guideline_id}")
-def delete_guideline(guideline_id: str):
+def delete_guideline(guideline_id: str, user=Depends(current_user)):
+    if user["role"] != "admin": raise HTTPException(status_code=403, detail="Administrator role required")
     conn = get_db()
     cursor = conn.cursor()
 
@@ -160,6 +169,7 @@ def delete_guideline(guideline_id: str):
         raise HTTPException(status_code=404, detail="Guideline profile not found")
 
     was_active = existing["is_active"]
+    record_audit(cursor, "guideline_deleted", "guideline", guideline_id, {"name": existing["name"]})
     cursor.execute("DELETE FROM guidelines WHERE id = ?;", (guideline_id,))
 
     # If the active profile was deleted, activate the next available profile
@@ -172,7 +182,8 @@ def delete_guideline(guideline_id: str):
 
 
 @router.post("/{guideline_id}/activate", response_model=GuidelineResponse)
-def activate_guideline(guideline_id: str):
+def activate_guideline(guideline_id: str, user=Depends(current_user)):
+    if user["role"] != "admin": raise HTTPException(status_code=403, detail="Administrator role required")
     conn = get_db()
     cursor = conn.cursor()
 
@@ -185,6 +196,8 @@ def activate_guideline(guideline_id: str):
     cursor.execute("UPDATE guidelines SET is_active = 0 WHERE 1=1;")
     now = datetime.now(timezone.utc).isoformat()
     cursor.execute("UPDATE guidelines SET is_active = 1, updated_at = ? WHERE id = ?;", (now, guideline_id))
+    record_guideline_version(cursor, guideline_id, "activated")
+    record_audit(cursor, "guideline_activated", "guideline", guideline_id, {"name": existing["name"]})
     conn.commit()
 
     cursor.execute("SELECT * FROM guidelines WHERE id = ?;", (guideline_id,))

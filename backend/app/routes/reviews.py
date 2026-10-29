@@ -1,8 +1,10 @@
 import json
 from datetime import datetime, timezone
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from ..database import get_db
+from ..governance import record_audit
+from ..security import current_user
 from ..models import (
     ReviewResponse,
     ReviewListItem,
@@ -32,15 +34,14 @@ def _row_to_finding(row) -> Finding:
 
 
 @router.get("", response_model=List[ReviewListItem])
-def list_reviews():
+def list_reviews(user=Depends(current_user)):
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT r.id, r.title, r.guideline_name, r.status, r.final_decision, r.summary, r.created_at, r.updated_at
-    FROM reviews r
-    ORDER BY r.created_at DESC;
-    """)
+    if user["role"] == "admin":
+        cursor.execute("SELECT r.id, r.title, r.guideline_name, r.status, r.final_decision, r.summary, r.created_at, r.updated_at FROM reviews r ORDER BY r.created_at DESC")
+    else:
+        cursor.execute("SELECT r.id, r.title, r.guideline_name, r.status, r.final_decision, r.summary, r.created_at, r.updated_at FROM reviews r WHERE r.assigned_to=? ORDER BY r.created_at DESC", (user["id"],))
     rows = cursor.fetchall()
     conn.close()
 
@@ -65,7 +66,7 @@ def list_reviews():
 
 
 @router.get("/{review_id}", response_model=ReviewResponse)
-def get_review(review_id: str):
+def get_review(review_id: str, user=Depends(current_user)):
     conn = get_db()
     cursor = conn.cursor()
 
@@ -74,6 +75,9 @@ def get_review(review_id: str):
     if not review_row:
         conn.close()
         raise HTTPException(status_code=404, detail="Review not found")
+
+    if user["role"] != "admin" and review_row["assigned_to"] != user["id"]:
+        conn.close(); raise HTTPException(status_code=403, detail="This review is not assigned to you")
 
     cursor.execute("SELECT * FROM findings WHERE review_id = ? ORDER BY is_heuristic ASC, start_pos ASC;", (review_id,))
     finding_rows = cursor.fetchall()
@@ -99,7 +103,7 @@ def get_review(review_id: str):
 
 
 @router.post("/{review_id}/decision", response_model=ReviewResponse)
-def record_decision(review_id: str, payload: DecisionRequest):
+def record_decision(review_id: str, payload: DecisionRequest, user=Depends(current_user)):
     allowed_decisions = ["approved", "changes_required", "rejected"]
     decision = payload.final_decision.lower().strip()
     if decision not in allowed_decisions:
@@ -117,6 +121,9 @@ def record_decision(review_id: str, payload: DecisionRequest):
         conn.close()
         raise HTTPException(status_code=404, detail="Review not found")
 
+    if user["role"] != "admin" and review_row["assigned_to"] != user["id"]:
+        conn.close(); raise HTTPException(status_code=403, detail="This review is not assigned to you")
+
     now = datetime.now(timezone.utc).isoformat()
 
     # Update findings statuses if bulk actions were supplied
@@ -133,6 +140,7 @@ def record_decision(review_id: str, payload: DecisionRequest):
     WHERE id = ?;
     """, (decision, payload.reviewer_notes, now, review_id))
 
+    record_audit(cursor, "review_decision_recorded", "review", review_id, {"decision": decision, "finding_actions_count": len(payload.finding_actions or {})})
     conn.commit()
 
     # Fetch updated review and findings
@@ -162,7 +170,7 @@ def record_decision(review_id: str, payload: DecisionRequest):
 
 
 @router.patch("/{review_id}/findings/{finding_id}", response_model=Finding)
-def update_finding_status(review_id: str, finding_id: str, payload: FindingStatusUpdate):
+def update_finding_status(review_id: str, finding_id: str, payload: FindingStatusUpdate, user=Depends(current_user)):
     valid_statuses = ["unreviewed", "accepted", "dismissed", "reviewed"]
     new_status = payload.review_status.lower().strip()
     if new_status not in valid_statuses:
@@ -174,6 +182,12 @@ def update_finding_status(review_id: str, finding_id: str, payload: FindingStatu
     conn = get_db()
     cursor = conn.cursor()
 
+    review=cursor.execute("SELECT assigned_to FROM reviews WHERE id=?",(review_id,)).fetchone()
+    if not review:
+        conn.close(); raise HTTPException(status_code=404, detail="Review not found")
+    if user["role"] != "admin" and review["assigned_to"] != user["id"]:
+        conn.close(); raise HTTPException(status_code=403, detail="This review is not assigned to you")
+
     cursor.execute("SELECT * FROM findings WHERE id = ? AND review_id = ?;", (finding_id, review_id))
     finding_row = cursor.fetchone()
     if not finding_row:
@@ -183,6 +197,7 @@ def update_finding_status(review_id: str, finding_id: str, payload: FindingStatu
     cursor.execute("UPDATE findings SET review_status = ? WHERE id = ?;", (new_status, finding_id))
     now = datetime.now(timezone.utc).isoformat()
     cursor.execute("UPDATE reviews SET updated_at = ? WHERE id = ?;", (now, review_id))
+    record_audit(cursor, "finding_status_updated", "finding", finding_id, {"review_id": review_id, "review_status": new_status})
     conn.commit()
 
     cursor.execute("SELECT * FROM findings WHERE id = ?;", (finding_id,))
@@ -193,7 +208,7 @@ def update_finding_status(review_id: str, finding_id: str, payload: FindingStatu
 
 
 @router.delete("/{review_id}")
-def delete_review(review_id: str):
+def delete_review(review_id: str, user=Depends(current_user)):
     conn = get_db()
     cursor = conn.cursor()
 
@@ -203,6 +218,10 @@ def delete_review(review_id: str):
         conn.close()
         raise HTTPException(status_code=404, detail="Review not found")
 
+    if user["role"] != "admin":
+        conn.close(); raise HTTPException(status_code=403, detail="Administrator role required to delete reviews")
+
+    record_audit(cursor, "review_deleted", "review", review_id, {"title": row["title"]})
     cursor.execute("DELETE FROM findings WHERE review_id = ?;", (review_id,))
     cursor.execute("DELETE FROM reviews WHERE id = ?;", (review_id,))
     conn.commit()

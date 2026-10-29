@@ -9,11 +9,12 @@ const API_BASE = (
 ).replace(/\/+$/, '');
 async function request(url, options = {}) {
   const config = {
+    ...options,
     headers: {
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...(localStorage.getItem('bg_token') ? { Authorization: `Bearer ${localStorage.getItem('bg_token')}` } : {}),
+      ...(options.headers || {}),
     },
-    ...options,
   };
 
   try {
@@ -48,6 +49,13 @@ async function request(url, options = {}) {
 }
 
 export const api = {
+  async login(username, password) { return request('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }); },
+  async me() { return request('/api/auth/me'); },
+  async getUsers() { return request('/api/auth/users'); },
+  async createUser(payload) { return request('/api/auth/users', { method: 'POST', body: JSON.stringify(payload) }); },
+  async getWorkflowReviews() { return request('/api/workflow/reviews'); },
+  async assignReview(reviewId, reviewer_id) { return request(`/api/workflow/reviews/${reviewId}/assign`, { method: 'POST', body: JSON.stringify({ reviewer_id }) }); },
+  async setWorkflowStatus(reviewId, status) { return request(`/api/workflow/reviews/${reviewId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }); },
   // Service health and system info
   async getHealth() {
     return request('/health');

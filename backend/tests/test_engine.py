@@ -30,7 +30,12 @@ def setup_db():
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    test_client = TestClient(app)
+    with test_client:
+        response = test_client.post("/api/auth/login", json={"username": "admin", "password": "ChangeMe123!"})
+        assert response.status_code == 200, response.text
+        test_client.headers.update({"Authorization": f"Bearer {response.json()['access_token']}"})
+        yield test_client
 
 
 def test_health_check(client):

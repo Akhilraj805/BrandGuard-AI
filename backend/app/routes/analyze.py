@@ -1,16 +1,18 @@
 import json
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from ..database import get_db
+from ..security import current_user
 from ..models import AnalysisRequest, ReviewResponse, Finding
 from ..engine import analyze_content, summarize_findings
+from ..governance import record_guideline_version, record_audit
 
 router = APIRouter(prefix="/api/analyze", tags=["analyze"])
 
 
 @router.post("", response_model=ReviewResponse)
-def analyze(payload: AnalysisRequest):
+def analyze(payload: AnalysisRequest, user=Depends(current_user)):
     content = payload.content.strip()
     title = payload.title.strip()
 
@@ -42,6 +44,28 @@ def analyze(payload: AnalysisRequest):
         )
 
     guideline_id = guideline_row["id"]
+
+    # Ensure the selected policy has an initial version.
+    cursor.execute(
+        """
+        SELECT MAX(version_number) AS latest
+        FROM guideline_versions
+        WHERE guideline_id = ?
+        """,
+        (guideline_row["id"],),
+    )
+    version_row = cursor.fetchone()
+
+    if version_row["latest"] is None:
+        record_guideline_version(
+            cursor,
+            guideline_row["id"],
+            "initial",
+        )
+        guideline_version = 1
+    else:
+        guideline_version = version_row["latest"]
+
     guideline_name = guideline_row["name"]
 
     guideline_dict = {
@@ -61,8 +85,12 @@ def analyze(payload: AnalysisRequest):
     now = datetime.now(timezone.utc).isoformat()
 
     cursor.execute("""
-    INSERT INTO reviews (id, title, content, guideline_id, guideline_name, status, final_decision, reviewer_notes, summary, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?);
+    INSERT INTO reviews (
+        id, title, content, guideline_id, guideline_name,
+        status, final_decision, reviewer_notes, summary,
+        created_at, updated_at, guideline_version
+    )
+    VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?);
     """, (
         review_id,
         title,
@@ -72,7 +100,8 @@ def analyze(payload: AnalysisRequest):
         "pending_review",
         json.dumps(summary),
         now,
-        now
+        now,
+        guideline_version,
     ))
 
     # Insert findings
@@ -97,6 +126,17 @@ def analyze(payload: AnalysisRequest):
             now
         ))
 
+    record_audit(
+    cursor,
+    "content_analyzed",
+    "review",
+    review_id,
+    {
+        "guideline_id": guideline_id,
+        "guideline_version": guideline_version,
+        "finding_count": len(findings),
+    },
+)
     conn.commit()
     conn.close()
 

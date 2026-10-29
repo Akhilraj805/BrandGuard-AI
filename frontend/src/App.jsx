@@ -7,9 +7,14 @@ import { ContentReview } from './pages/ContentReview';
 import { BrandGuidelines } from './pages/BrandGuidelines';
 import { ReviewHistory } from './pages/ReviewHistory';
 import { Settings } from './pages/Settings';
+import { Login } from './pages/Login';
+import { Workflow } from './pages/Workflow';
 
 export function App() {
   const [currentTab, setCurrentTab] = useState('dashboard');
+  const [user, setUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  useEffect(() => { let alive = true; if (localStorage.getItem('bg_token')) api.me().then(u => { if(alive) setUser(u); }).catch(() => localStorage.removeItem('bg_token')).finally(() => { if(alive) setAuthChecked(true); }); else setAuthChecked(true); return () => { alive = false; }; }, []);
   const [activeGuideline, setActiveGuideline] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [selectedReviewId, setSelectedReviewId] = useState(null);
@@ -52,6 +57,9 @@ export function App() {
     setCurrentTab('review');
   };
 
+  if (!authChecked) return <div className="min-h-screen grid place-items-center text-slate-500">Checking secure session…</div>;
+  if (!user) return <Login onLogin={setUser} />;
+
   return (
     <div className="flex h-[100dvh] w-full max-w-full overflow-hidden bg-slate-50 font-sans">
       {/* Persistent Left Sidebar */}
@@ -62,6 +70,8 @@ export function App() {
           setCurrentTab(tab);
         }}
         activeGuideline={activeGuideline}
+        user={user}
+        onLogout={() => { localStorage.removeItem('bg_token'); setUser(null); }}
         isConnected={isConnected}
         mobileOpen={mobileOpen}
         setMobileOpen={setMobileOpen}
@@ -108,6 +118,7 @@ export function App() {
           )}
 
           {currentTab === 'settings' && <Settings />}
+          {currentTab === 'workflow' && <Workflow user={user} />}
         </main>
       </div>
     </div>

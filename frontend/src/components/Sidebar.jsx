@@ -9,12 +9,16 @@ import {
   Sliders,
   Menu,
   X,
+  Users,
+  LogOut,
 } from 'lucide-react';
 
 export function Sidebar({
   currentTab,
   setCurrentTab,
   activeGuideline,
+  user,
+  onLogout,
   isConnected,
   mobileOpen = false,
   setMobileOpen = () => {},
@@ -24,6 +28,7 @@ export function Sidebar({
     { id: 'review', label: 'Content Review', icon: FileCheck2 },
     { id: 'guidelines', label: 'Brand Guidelines', icon: BookOpenCheck },
     { id: 'history', label: 'Review History', icon: History },
+    { id: 'workflow', label: 'Team Workflow', icon: Users },
     { id: 'settings', label: 'System & Status', icon: Sliders },
   ];
 
@@ -134,6 +139,10 @@ export function Sidebar({
           </div>
         )}
 
+        <div className="border-t border-slate-800 p-3">
+          <div className="mb-2 truncate px-2 text-xs text-slate-400">{user?.username} · {user?.role}</div>
+          <button onClick={onLogout} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"><LogOut className="h-4 w-4"/> Sign out</button>
+        </div>
         {/* Backend status */}
         <div className="flex items-center justify-between border-t border-slate-800/80 bg-slate-950/40 p-4 text-xs">
           <div className="flex items-center gap-2">

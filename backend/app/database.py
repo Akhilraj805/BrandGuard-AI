@@ -69,6 +69,50 @@ def init_db():
     );
     """)
 
+    # Round 3: policy version history
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS guideline_versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guideline_id TEXT NOT NULL,
+        version_number INTEGER NOT NULL,
+        snapshot TEXT NOT NULL,
+        change_type TEXT NOT NULL DEFAULT 'updated',
+        created_at TEXT NOT NULL,
+        UNIQUE(guideline_id, version_number)
+    );
+    """)
+
+    # Round 3: governance audit trail
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS audit_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_type TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        details TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL
+    );
+    """)
+
+    # Store the policy version used by each analysis.
+    cursor.execute("PRAGMA table_info(reviews);")
+    review_columns = {row["name"] for row in cursor.fetchall()}
+
+    if "guideline_version" not in review_columns:
+        cursor.execute(
+            "ALTER TABLE reviews ADD COLUMN guideline_version INTEGER"
+        )
+
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_guideline_versions_lookup
+    ON guideline_versions(guideline_id, version_number DESC);
+    """)
+
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_audit_events_created
+    ON audit_events(created_at DESC);
+    """)
+
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviews_created ON reviews(created_at DESC);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_findings_review ON findings(review_id);")
 
@@ -183,6 +227,55 @@ def init_db():
             default_guideline["created_at"],
             default_guideline["updated_at"]
         ))
+
+
+    # Ensure every existing guideline has an initial version snapshot.
+    # Existing version history is preserved.
+    from .governance import record_guideline_version
+
+    cursor.execute("SELECT id FROM guidelines")
+    for guideline_row in cursor.fetchall():
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM guideline_versions
+            WHERE guideline_id = ?
+            """,
+            (guideline_row["id"],),
+        )
+        if cursor.fetchone()["total"] == 0:
+            record_guideline_version(
+                cursor,
+                guideline_row["id"],
+                "created",
+            )
+
+
+    # Round 3: users, roles, assignments, and workflow tracking
+    cursor.execute("""CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('admin','reviewer')), is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+    );""")
+    cursor.execute("PRAGMA table_info(reviews);")
+    review_columns = {row["name"] for row in cursor.fetchall()}
+    if "assigned_to" not in review_columns:
+        cursor.execute("ALTER TABLE reviews ADD COLUMN assigned_to TEXT")
+    if "workflow_status" not in review_columns:
+        cursor.execute("ALTER TABLE reviews ADD COLUMN workflow_status TEXT NOT NULL DEFAULT 'pending'")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviews_assigned_to ON reviews(assigned_to, workflow_status);")
+
+    # Demo administrator can be configured before deployment using BRANDGUARD_ADMIN_USERNAME
+    # and BRANDGUARD_ADMIN_PASSWORD. Never use the demo password in production.
+    import os, hashlib, secrets
+    admin_username = os.getenv("BRANDGUARD_ADMIN_USERNAME", "admin").strip()
+    admin_password = os.getenv("BRANDGUARD_ADMIN_PASSWORD", "ChangeMe123!")
+    cursor.execute("SELECT id FROM users WHERE username = ?", (admin_username,))
+    if not cursor.fetchone():
+        salt = secrets.token_hex(16)
+        digest = hashlib.pbkdf2_hmac("sha256", admin_password.encode(), salt.encode(), 240000).hex()
+        cursor.execute("INSERT INTO users (id, username, password_hash, role, is_active, created_at) VALUES (?, ?, ?, 'admin', 1, ?)",
+                       ("usr_" + secrets.token_hex(8), admin_username, f"pbkdf2_sha256$240000${salt}${digest}", datetime.now(timezone.utc).isoformat()))
 
     conn.commit()
     conn.close()
