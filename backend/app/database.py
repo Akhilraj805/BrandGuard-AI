@@ -277,5 +277,43 @@ def init_db():
         cursor.execute("INSERT INTO users (id, username, password_hash, role, is_active, created_at) VALUES (?, ?, ?, 'admin', 1, ?)",
                        ("usr_" + secrets.token_hex(8), admin_username, f"pbkdf2_sha256$240000${salt}${digest}", datetime.now(timezone.utc).isoformat()))
 
+        
+    # Create reviewer demo account if it does not exist
+    reviewer_username = os.getenv(
+        "BRANDGUARD_REVIEWER_USERNAME", "judge_demo"
+    ).strip()
+    reviewer_password = os.getenv(
+        "BRANDGUARD_REVIEWER_PASSWORD", "Judge@12345"
+    )
+
+    cursor.execute(
+        "SELECT id FROM users WHERE username = ?",
+        (reviewer_username,),
+    )
+
+    if not cursor.fetchone():
+        salt = secrets.token_hex(16)
+        digest = hashlib.pbkdf2_hmac(
+            "sha256",
+            reviewer_password.encode(),
+            salt.encode(),
+            240000,
+        ).hex()
+
+        cursor.execute(
+            """
+            INSERT INTO users
+                (id, username, password_hash, role, is_active, created_at)
+            VALUES (?, ?, ?, 'reviewer', 1, ?)
+            """,
+            (
+                "usr_" + secrets.token_hex(8),
+                reviewer_username,
+                f"pbkdf2_sha256$240000${salt}${digest}",
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+
+
     conn.commit()
     conn.close()
